@@ -113,5 +113,5 @@ The objective of this project is to develop a **lightweight Android video player
 ## 🚀 Conclusion
 This project delivers a streamlined, efficient, and user-focused Android video player that prioritizes performance, simplicity, and privacy. By focusing on core playback features and eliminating unnecessary bloat, the application provides a reliable solution for users seeking smooth local video playback and serves as a solid reference for beginner Android developers.
 ---
-##Auther
+Auther
 Lewis Mudaida
