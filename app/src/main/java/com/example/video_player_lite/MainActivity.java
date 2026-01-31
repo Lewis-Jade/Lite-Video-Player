@@ -8,6 +8,7 @@ import android.content.Intent;
 import android.content.IntentFilter;
 import android.content.SharedPreferences;
 import android.content.pm.PackageManager;
+import android.database.Cursor;
 import android.graphics.Color;
 import android.net.Uri;
 import android.os.Build;
@@ -62,9 +63,28 @@ public class MainActivity extends AppCompatActivity {
     private final BroadcastReceiver onDownloadComplete = new BroadcastReceiver() {
         @Override
         public void onReceive(Context context, Intent intent) {
+            long downloadId = intent.getLongExtra(DownloadManager.EXTRA_DOWNLOAD_ID, -1);
             downloadProgress.setVisibility(ProgressBar.GONE);
-            Toast.makeText(context, "Download Finished!", Toast.LENGTH_SHORT).show();
-            // Optionally reload videos if they were downloaded to the currently opened folder
+            
+            if (downloadId != -1) {
+                DownloadManager manager = (DownloadManager) getSystemService(Context.DOWNLOAD_SERVICE);
+                DownloadManager.Query query = new DownloadManager.Query();
+                query.setFilterById(downloadId);
+                Cursor cursor = manager.query(query);
+                if (cursor.moveToFirst()) {
+                    int statusIndex = cursor.getColumnIndex(DownloadManager.COLUMN_STATUS);
+                    if (DownloadManager.STATUS_SUCCESSFUL == cursor.getInt(statusIndex)) {
+                        String uriString = cursor.getString(cursor.getColumnIndex(DownloadManager.COLUMN_LOCAL_URI));
+                        if (uriString != null) {
+                            Uri videoUri = Uri.parse(uriString);
+                            Toast.makeText(context, "Download Finished! Playing video...", Toast.LENGTH_SHORT).show();
+                            playVideo(videoUri);
+                        }
+                    }
+                }
+                cursor.close();
+            }
+            
             restoreLastFolder();
         }
     };
@@ -111,12 +131,7 @@ public class MainActivity extends AppCompatActivity {
 
         videoUris = new ArrayList<>();
 
-        adapter = new VideoAdapter(videoUris, this, uri -> {
-            Intent intent = new Intent(this, VideoPlaybackActivity.class);
-            intent.setData(uri);
-            intent.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
-            startActivity(intent);
-        });
+        adapter = new VideoAdapter(videoUris, this, this::playVideo);
 
         recyclerView.setAdapter(adapter);
 
@@ -131,7 +146,18 @@ public class MainActivity extends AppCompatActivity {
 
         restoreLastFolder();
         
-        registerReceiver(onDownloadComplete, new IntentFilter(DownloadManager.ACTION_DOWNLOAD_COMPLETE));
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            registerReceiver(onDownloadComplete, new IntentFilter(DownloadManager.ACTION_DOWNLOAD_COMPLETE), Context.RECEIVER_EXPORTED);
+        } else {
+            registerReceiver(onDownloadComplete, new IntentFilter(DownloadManager.ACTION_DOWNLOAD_COMPLETE));
+        }
+    }
+
+    private void playVideo(Uri uri) {
+        Intent intent = new Intent(this, VideoPlaybackActivity.class);
+        intent.setData(uri);
+        intent.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
+        startActivity(intent);
     }
 
     private void restoreLastFolder() {
@@ -152,7 +178,6 @@ public class MainActivity extends AppCompatActivity {
     public boolean onCreateOptionsMenu(Menu menu) {
         getMenuInflater().inflate(R.menu.manu_main, menu);
 
-        // Force icons to show in the overflow menu (the 3 dots)
         if (menu.getClass().getSimpleName().equals("MenuBuilder")) {
             try {
                 Method m = menu.getClass().getDeclaredMethod("setOptionalIconsVisible", Boolean.TYPE);
@@ -323,12 +348,15 @@ public class MainActivity extends AppCompatActivity {
         }
 
         adapter.updateList(videoUris);
-        Toast.makeText(this, "Loaded " + videoUris.size() + " videos", Toast.LENGTH_SHORT).show();
     }
 
     @Override
     protected void onDestroy() {
         super.onDestroy();
-        unregisterReceiver(onDownloadComplete);
+        try {
+            unregisterReceiver(onDownloadComplete);
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
     }
 }
